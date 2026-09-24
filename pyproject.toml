@@ -1,0 +1,35 @@
+[project]
+name = "mcpcalls"
+version = "0.1.0"
+description = "Servidor MCP de MCPearl: gestiones telefonicas delegadas con continuidad"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "mcp[cli]>=2.2.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2.0.54",
+    "tzdata>=2026.4",
+]
+
+[project.scripts]
+mcpcalls = "mcpcalls:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-m 'not pearl_live'"
+markers = [
+    "pearl_live: tests contra la API real de NLPearl (requieren .env y generan llamadas reales)",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
