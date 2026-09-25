@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Carpetas fuera del analisis de bugs.
+env:
+  RUFF_BUGS: "F821,F811,F822,F823,F704,F706"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Bloqueante. Los tests unitarios. Los marcados pearl_live quedan fuera:
+  # generan llamadas reales y cuestan dinero.
+  # -------------------------------------------------------------------------
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: pytest
+        run: uv run --group dev pytest -q
+
+  # -------------------------------------------------------------------------
+  # Bloqueante. Nombres indefinidos y redefiniciones: son NameError en
+  # ejecucion, no cuestiones de estilo.
+  # -------------------------------------------------------------------------
+  bugs:
+    name: ruff (solo bugs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: ruff
+        run: uvx ruff check --select "$RUFF_BUGS" .
+
+  # -------------------------------------------------------------------------
+  # Informativo. El continue-on-error va en el STEP, no en el job: a nivel de
+  # job el job se marca como fallido igualmente y llegan correos de "all jobs
+  # have failed" por algo que no bloquea nada.
+  # Cuando el repo este limpio, quitar el continue-on-error de aqui.
+  # -------------------------------------------------------------------------
+  lint:
+    name: ruff (estilo, informativo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: ruff
+        continue-on-error: true
+        run: uvx ruff check .
+
+  # -------------------------------------------------------------------------
+  # La matriz de cumplimiento de la spec, publicada en el resumen del PR.
+  # No bloquea: un requisito pendiente no es un fallo. Lo que si bloquea, y
+  # lo hace dentro del job de pytest, es que la tabla se desincronice de la
+  # spec o que la evidencia declarada desaparezca.
+  # -------------------------------------------------------------------------
+  spec:
+    name: cumplimiento de la spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: matriz F01-F12 / A01-A10
+        run: |
+          {
+            echo "## Cumplimiento de la especificacion"
+            echo ""
+            echo '```'
+            uv run --group dev pytest tests/test_spec_compliance.py -v --no-header 2>&1 \
+              | grep -E 'PASSED|XFAIL|FAILED' \
+              | sed 's|tests/test_spec_compliance.py::||' \
+              || true
+            echo '```'
+            echo ""
+            echo "PASSED = implementado con evidencia · XFAIL = hueco declarado"
+            echo "Las desviaciones BLOCKED se explican en \`docs/spec_deviations.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
